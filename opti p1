@@ -1,0 +1,246 @@
+import numpy as np
+import gurobipy as gp
+import pandas as pd
+### CSV DATA IS READ BELOW
+
+<b> Please Note ROI_MAT is divided by 100 to maintain the uniformity with the previous file after reading it.</b>
+#Read ROI data
+roi_data=pd.read_csv('ROI_data.csv')
+print('ROI DATA')
+display(roi_data)
+
+print('ROI Monthly Data')
+roi_mat=pd.read_csv('roi_mat.csv', index_col=0)
+
+#DIVIDING ROI_MAT by 100 to maintain uniformity with ROI_DATA
+roi_mat=roi_mat/100
+display(roi_mat)
+#### Problem 3 : 
+Formulate the marketing budget allocation problem as a linear program.  Use gurobi to find the optimal budget allocation.
+obj = roi_data.iloc[0][1:].values #Maximize ROI
+A = np.zeros((13,10))
+A[0,:] = [1,1,1,1,1,1,1,1,1,1]      #Total sum of all money spent be less that or equal to 10 million USD (budget)
+A[1,:] = [1,1,0,0,-1,0,0,0,0,-1]    #Amount of money spent on print and TV be less than money spent on facebook and email
+A[2,:] = [0,0,-2,-2,1,1,1,1,1,0]    #Total amount used in Social media atleast twice of SEO and adword 
+A[3:,:] = np.diag(np.ones(10))      #Money spent on any medium be less than or equal to 3 million USD
+
+b = np.array([10000000,0,0,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000])
+sense = np.array(['<','<','>','<','<','<','<','<','<','<','<','<','<'])
+ojModel = gp.Model() 
+
+ojModX = ojModel.addMVar(10) 
+ojModCon = ojModel.addMConstrs(A, ojModX, sense, b) 
+ojModel.setMObjective(None,obj,0,sense=gp.GRB.MAXIMIZE) 
+
+ojModel.Params.OutputFlag = 0 
+ojModel.optimize()
+
+maximum_profit_roi_1=ojModel.objVal
+
+profit_table=pd.DataFrame()
+profit_table['Summary'] = ['Total Budget or Investment','Optimized ROI']
+profit_table['Amount (USD) - ROI estimate 1'] = [10000000,maximum_profit_roi_1]
+profit_table=profit_table.set_index('Summary')
+
+
+budget_allocation_df=pd.DataFrame()
+budget_allocation_df['Platform']=roi_data.columns.values[1:]
+budget_allocation_df['Budget Allocation - ROI ESTIMATE 1 - USD']=ojModX.x 
+budget_allocation_df=budget_allocation_df.set_index('Platform')
+
+
+display(profit_table)
+display(budget_allocation_df)
+
+budget_allocation_df.plot(kind='bar')
+
+#### Problem 4 : 
+Formulate the marketing budget allocation problem using the Second ROI
+#Optimize using second ROI estimates
+obj2 = roi_data.iloc[1][1:].values
+A = np.zeros((13,10))
+A[0,:] = [1,1,1,1,1,1,1,1,1,1]
+A[1,:] = [1,1,0,0,-1,0,0,0,0,-1]
+A[2,:] = [0,0,-2,-2,1,1,1,1,1,0]
+A[3:,:] = np.diag(np.ones(10)) 
+b = np.array([10000000,0,0,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000])
+sense = np.array(['<','<','>','<','<','<','<','<','<','<','<','<','<'])
+ojModel = gp.Model() 
+
+ojModX = ojModel.addMVar(10) 
+ojModCon = ojModel.addMConstrs(A, ojModX, sense, b) 
+ojModel.setMObjective(None,obj2,0,sense=gp.GRB.MAXIMIZE) 
+
+ojModel.Params.OutputFlag = 0 
+ojModel.optimize()
+
+maximum_profit_roi_2=ojModel.objVal
+
+
+profit_table['Amount (USD) - ROI estimate 2'] = [10000000,ojModel.objVal]
+budget_allocation_df['Budget Allocation - ROI ESTIMATE 2 - USD']=ojModX.x 
+
+display(profit_table)
+display(budget_allocation_df)
+
+budget_allocation_df.plot(kind='bar')
+#### Problem 5
+roi1_alloca2=maximum_profit_roi_1-sum(obj*budget_allocation_df['Budget Allocation - ROI ESTIMATE 2 - USD'])
+roi2_alloca1=maximum_profit_roi_2-sum(obj2*budget_allocation_df['Budget Allocation - ROI ESTIMATE 1 - USD'])
+
+print('Case 1 : Change in Objective(Maximum ROI) is : ' ,roi1_alloca2 )
+print('Case 2 : Change in Objective(Maximum ROI) is : ' ,roi2_alloca1 )
+
+#Running Optimization without the third constraint(#Money spent on any medium be less than or equal to 3 million USD)
+A = np.zeros((3,10))
+A[0,:] = [1,1,1,1,1,1,1,1,1,1]
+A[1,:] = [1,1,0,0,-1,0,0,0,0,-1]
+A[2,:] = [0,0,-2,-2,1,1,1,1,1,0]
+b = np.array([10000000,0,0])
+sense = np.array(['<','<','>'])
+
+ojModel = gp.Model() 
+
+ojModX = ojModel.addMVar(10) 
+ojModCon = ojModel.addMConstrs(A, ojModX, sense, b) 
+ojModel.setMObjective(None,obj,0,sense=gp.GRB.MAXIMIZE) 
+
+ojModel.Params.OutputFlag = 0 
+ojModel.optimize()
+
+
+budget_allocation_new_df=pd.DataFrame()
+budget_allocation_new_df['Platform']=roi_data.columns.values[1:]
+budget_allocation_new_df['Budget Allocation (1)']=ojModX.x 
+budget_allocation_new_df=budget_allocation_new_df.set_index('Platform')
+
+ojModel = gp.Model() 
+
+ojModX = ojModel.addMVar(10) 
+ojModCon = ojModel.addMConstrs(A, ojModX, sense, b) 
+ojModel.setMObjective(None,obj2,0,sense=gp.GRB.MAXIMIZE) 
+
+ojModel.Params.OutputFlag = 0 
+ojModel.optimize()
+
+budget_allocation_new_df['Budget Allocation (2)']=ojModX.x 
+
+display(budget_allocation_new_df)
+
+print('Maximum profit returned is more without the constraint. ' , ojModel.objVal , ' USD' )
+print('This is more than the ROI gained with the third constraint ', maximum_profit_roi_1, ' and ' , maximum_profit_roi_2, ' by ',ojModel.objVal-maximum_profit_roi_2 , ' USD ' )
+print('  ')
+print('Summary : ')
+print('Profit is maximised without the constraint. However, As we can see the budget allocation for media spends is split in only in   two media. Adding a constraint maybe a method to avoid putting all the eggs only in two baskets.')
+#### Problem 6
+To explore this further perform some analysis of how your optimal allocation would change based on changes in the ROI data.  Use the first ROI data as your starting point.  By how much could each advertising medium’s ROI increase or decrease and still result in the same optimal allocation you found in step (3)?
+
+#Making sure the problem is using the correct constraints and ROI estimates
+A = np.zeros((13,10))
+A[0,:] = [1,1,1,1,1,1,1,1,1,1]      #Total sum of all money spent be less that or equal to 10 million USD (budget)
+A[1,:] = [1,1,0,0,-1,0,0,0,0,-1]    #Amount of money spent on print and TV be less than money spent on facebook and email
+A[2,:] = [0,0,-2,-2,1,1,1,1,1,0]    #Total amount used in Social media atleast twice of SEO and adword 
+A[3:,:] = np.diag(np.ones(10))      #Money spent on any medium be less than or equal to 3 million USD
+
+b = np.array([10000000,0,0,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000])
+sense = np.array(['<','<','>','<','<','<','<','<','<','<','<','<','<'])
+
+ojModel = gp.Model() 
+
+ojModX = ojModel.addMVar(10) 
+ojModCon = ojModel.addMConstrs(A, ojModX, sense, b) 
+ojModel.setMObjective(None,obj,0,sense=gp.GRB.MAXIMIZE) 
+
+ojModel.Params.OutputFlag = 0 
+ojModel.optimize()
+
+
+optimal_allocation_range=pd.DataFrame()
+optimal_allocation_range['Platform']=roi_data.columns.values[1:]
+optimal_allocation_range['Minimum Val']=ojModX.SAObjLow
+optimal_allocation_range['Maximum Val']=ojModX.SAObjUp
+optimal_allocation_range['Current Value']= roi_data.iloc[0][1:].values 
+optimal_allocation_range=optimal_allocation_range.set_index('Platform')
+
+print('To maintain the same optimal allocation the ranges for each platform is as follows : ')
+display(optimal_allocation_range)
+
+#### Problem 7
+Your boss has gained permission to reinvest half of the return. For example, if the marketing obtains a 4% return in January, the budget of February will be $10M + $10M × 4% × 50% = $10.2M.  The monthly ROI for next year is given in Project1.Rdata. The three constraints given by your boss are still in place for each month.  What is the optimal allocation for each month?
+#Making sure the problem is using the correct constraints and ROI estimates
+A = np.zeros((13,10))
+A[0,:] = [1,1,1,1,1,1,1,1,1,1]      #Total sum of all money spent be less that or equal to 10 million USD (budget)
+A[1,:] = [1,1,0,0,-1,0,0,0,0,-1]    #Amount of money spent on print and TV be less than money spent on facebook and email
+A[2,:] = [0,0,-2,-2,1,1,1,1,1,0]    #Total amount used in Social media atleast twice of SEO and adword 
+A[3:,:] = np.diag(np.ones(10))      #Money spent on any medium be less than or equal to 3 million USD
+
+sense = np.array(['<','<','>','<','<','<','<','<','<','<','<','<','<'])
+
+#Summary
+sumary_df=pd.DataFrame()
+months=roi_mat.index.values
+
+obj = roi_data.iloc[0][1:].values 
+
+availaible_budget=10000000
+    
+avl_inve=[]
+roi=[]
+
+#Recalculate Budget Avalaible for each month
+for month_index in range(len(roi_mat)):
+
+    avl_inve.append(availaible_budget)
+    b = np.array([availaible_budget,0,0,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000,3000000])
+
+    ojModel = gp.Model() 
+    ojModX = ojModel.addMVar(10) 
+    ojModCon = ojModel.addMConstrs(A, ojModX, sense, b) 
+    ojModel.setMObjective(None,obj,0,sense=gp.GRB.MAXIMIZE) 
+
+    ojModel.Params.OutputFlag = 0 
+    ojModel.optimize()
+
+    #Calculate ROI of the month using dot product
+    ROI_month=roi_mat.iloc[month_index].values@ojModX.x
+    
+    
+    budget_allocation = ojModX.x.tolist()
+    budget_allocation.append(ROI_month)
+    budget_allocation.append(availaible_budget)
+    
+    sumary_df[months[month_index]]=budget_allocation
+    
+ 
+    #Update Availaible Budget :
+    availaible_budget=availaible_budget+(0.5*(ROI_month))
+    roi.append(ROI_month)
+    
+sumary_df=sumary_df/10**6
+
+ind = roi_data.columns.values[1:].tolist()
+ind.append('ROI')
+ind.append('Availaible_Budget')
+sumary_df=sumary_df.set_index([pd.Index(ind)])
+
+display(sumary_df.T)
+8)	A stable budget is defined as a monthly allocation such that for each platform the monthly change in spend is no more than $1M. Is the allocation you found stable? If it isn’t, you do not need to solve a new optimization model.  Describe how my might model this?
+df=sumary_df.T
+df_shift = sumary_df.T.apply(lambda x: x.shift(1))
+df_shift.loc['January'] = 0
+
+tempdf=df_shift-df
+tempdf=tempdf[1:]
+tempdf.drop(columns=['ROI','Availaible_Budget'] , inplace=True)
+stable_check=tempdf.applymap(lambda x : abs(x)>=1)
+
+check=stable_check.eq(True).all().eq(True).all()
+
+budget=''
+
+if not check : 
+    budget= 'Stable'
+else:
+    budget='Unstable'
+    
+print('The Budget is ' +  budget )
